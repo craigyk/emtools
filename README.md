@@ -6,7 +6,7 @@ Hall, S. R. (1991). The STAR file: A new format for electronic data transfer and
 
 Back in 1991 when this format was proposed, there were no great alternatives; XML didn't exist yet, but today it is still used despite the large number of better defined, flexible and already implemented alternatives (XML, JSON, YAML).  /rant
 
-I used to the pyparsing library to implement the parsing.  
+I used the pyparsing library to implement the parsing.  
 
 ### What is this repository for? ###
 
