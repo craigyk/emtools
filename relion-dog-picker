@@ -1,0 +1,173 @@
+#!/eppec/storage/sw/relion_dog_picker/site/bin/python
+
+import argparse
+import imaging
+import pystar
+import pyfs
+
+import numpy as np
+
+
+def arguments():
+
+    def floatlist(string):
+        return tuple(map(float, string.split(',')))
+
+    parser = argparse.ArgumentParser(
+        description='runs dog picker on an MRC image and outputs a relion compatible STAR file')
+    
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--mrc', help='path to MRC input image')
+    group.add_argument('--star', help='path to STAR file with MRC images')
+    group.add_argument('--glob', help='glob pattern for MRC images')
+    
+    parser.add_argument('-p', '--parallel', type=int,
+                        help='number of images to process in parallel')
+    parser.add_argument('-r', '--range', type=floatlist, required=True,
+                        help='range of pixel sizes to search')
+    parser.add_argument('-b', '--bins', type=int, default=1,
+                        help='number of bins for particles, gets outputted as seperate STAR files with group # appended to file name')
+    parser.add_argument('-l', '--label', default='dog',
+                        help='suffix label for STAR files.  known in Relion GUI as `Picking rootname`')
+    parser.add_argument('-t', '--thresholds', default=(0, 1.0), type=floatlist,
+                        help='min and max thresholds for particle selection')
+    parser.add_argument('-i', '--invert', default=False, type=bool, 
+                        help='invert image so that particles are black on a white background')
+    
+    return parser.parse_args()
+
+
+def dog_size(s1, s2):
+    k = s2 / s1
+    k2 = k**2
+    k21 = k2 - 1
+    return s1 / np.sqrt(k21 / (2 * k2 * np.log(k)))
+
+
+def dog_ends(size, k):
+    radius = float(size) / 2.0
+    sigma = radius / np.sqrt( (2*k*k*np.log(k)) / (k*k-1) )
+    return sigma, sigma * k
+
+
+def sig_diff(s1, s2):
+    return np.sqrt(s2*s2 - s1*s1)
+
+
+def dog(image, size, k):
+    s1, s2 = dog_ends(size, k)
+    g1 = imaging.filters.gaussian(image, s1)
+    g2 = imaging.filters.gaussian(image, s2)
+    return ( g1 - g2 ) * ( float(size) / 2.0 ) * ( k - 1.0 )
+
+
+def log(image, size):
+    # this is the sigma that gives zero-crossings at given radius
+    sigma = ( size / 2.0 ) / np.sqrt(2)
+    # return scale-normalized result by multiplying with sigma^2
+    return -imaging.filters.laplace(image, sigma)*sigma*sigma
+
+
+def detect(image, size, mint, maxt):
+    zoom = min(1.0, 30.0 / size)
+    reduced_image = imaging.filters.zoom(image, zoom)
+    rzoom = float(reduced_image.shape[0]) / float(image.shape[0])
+    czoom = float(reduced_image.shape[1]) / float(image.shape[1])
+    reduced_size = np.mean([rzoom, czoom]) * size
+    log_image = -log(reduced_image, reduced_size)
+    peaks = imaging.detection.peaks.maxima(log_image, 3)
+    peaks = [(p, v) for p, v in peaks if v <= maxt]
+    peaks = [(p, v) for p, v in peaks if v >= mint]
+    return zoom_peaks(peaks, [rzoom, czoom])
+
+
+def colorize_log_map(logimage, mint, maxt):
+    colorized = imaging.filters.norm(logimage, 0.01, 0.01, -1.0, 1.0)
+    colorized = imaging.filters.asRGB(logimage)
+    lt = 1.0 - imaging.filters.scale(np.fmax(mint-logimage, -0.1), 0.0, 1.0)
+    gt = 1.0 - imaging.filters.scale(np.fmax(logimage-maxt, -0.1), 0.0, 1.0)
+    colorized[:, :, 0] *= gt
+    colorized[:, :, 1] *= gt * lt
+    colorized[:, :, 2] *= lt
+    return colorized
+
+
+def save_peaks(image, log_image, peaks, size, path):
+    image = imaging.filters.norm(image, 0.01, 0.01, 0, 255)
+    keys = log_peaks_as_keypoints(peaks, size)
+    image = imaging.detection.keypoints.draw(image, keys)
+    imaging.save(image, path)
+    imaging.save(log_image, 'p-1.png')
+
+
+def zoom_peaks(peaks, zoom):
+    return [(tuple(np.array(p)*(1.0/np.array(zoom))), v) for p, v in peaks]
+
+
+def log_peaks_as_keypoints(peaks, size):
+    Keypoint = imaging.detection.keypoints.Keypoint
+    return [Keypoint(p[0][0], p[0][1], size, 0.0, p[1], 1, 1) for p in peaks]
+
+
+def save_star(keypoints, path):
+    with open(path, 'w') as dst:
+        dst.write('''
+data_
+
+loop_
+_rlnCoordinateX #1
+_rlnCoordinateY #2
+_rlnAnglePsi #3
+_rlnClassNumber #4
+_rlnAutopickFigureOfMerit #5
+''')
+        for keypoint in keypoints:
+            psi = 0.0
+            cls = 1
+            dst.write('%.6f %.6f %.6f %d %.6f\n' % (keypoint[0][1], keypoint[0][0], psi, cls, keypoint[1]))
+
+
+def load_micrographs_star(path):
+    values = pystar.load(path)[0]['data_']
+    fields = list(values)[0]
+    index = fields.index('rlnMicrographName')
+    return [x[index] for x in list(values.values())[0]]
+
+
+def get_micrographs(args):
+    if args.mrc:
+        return [args.mrc]
+    elif args.glob:
+        import glob
+        return glob.glob(args.glob)
+    elif args.star:
+        return load_micrographs_star(args.star)
+    raise ValueError()
+
+
+if __name__ == '__main__':
+
+    args = arguments()
+    print(args)
+    mics = get_micrographs(args)
+    size = list(args.range)[0]
+
+    def process(mic):
+        try:
+            if args.star:
+                mic = pyfs.join(pyfs.dpath(args.star), mic)
+            image = imaging.load(mic)[0]
+        except FileNotFoundError:
+            return
+        if args.invert:
+            image = imaging.filters.invert(image)
+        keys = list(detect(image, size, args.thresholds[0], args.thresholds[1]))
+        print('found %d particles in image %s' % (len(keys), mic))
+        star = pyfs.rext(mic, full=True) + '_%s.star' % (args.label)
+        save_star(keys, star)
+
+    import multiprocessing as mp
+    pool = mp.Pool(args.parallel)
+    pool.map(process, mics)
+
+

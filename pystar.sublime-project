@@ -1,0 +1,42 @@
+{
+	"build_systems":
+	[
+		{
+			"file_regex": "^[ ]*File \"(...*?)\", line ([0-9]*)",
+			"name": "Anaconda Python Builder",
+			"selector": "source.python",
+			"shell_cmd": "/Users/yoshiokc/miniconda/envs/p3test/bin/python -u \"$file\""
+		}
+	],
+	"folders":
+	[
+		{
+			"folder_exclude_patterns":
+			[
+				"__pycache__"
+			],
+			"path": "."
+		}
+	],
+	"settings":
+	{
+		"anaconda_gutter_theme": "simple",
+		"anaconda_linter_mark_style": "none",
+		"anaconda_linter_underlines": true,
+		"anaconda_linting": true,
+		"anaconda_linting_behaviour": "always",
+		"auto_formatting": false,
+		"pep257": false,
+		"pep8_ignore":
+		[
+			"E501",
+			"E201",
+			"E203",
+			"E202"
+		],
+		"python_interpreter": "/Users/yoshiokc/miniconda/envs/p3test/bin/python",
+		"test_command": "python -m unittest discover",
+		"use_pylint": false,
+		"validate_imports": true
+	}
+}

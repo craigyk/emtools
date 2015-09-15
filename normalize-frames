@@ -1,0 +1,62 @@
+#!/eppec/storage/sw/relion_dog_picker/site/bin/python
+
+
+import time
+import imaging
+import numpy as np
+
+
+def arguments():
+    
+    import argparse
+
+    def floatlist(string):
+        return tuple(map(float, string.split(',')))
+
+    parser = argparse.ArgumentParser(
+        description="normalize raw frame stacks")
+    parser.add_argument('-i', '--input', required=True,
+                        help='input MRC frame stack')
+    parser.add_argument('--norm', required=True,
+                        help='path to MRC norm reference')
+    parser.add_argument('-o', '--output', required=True,
+                        help='path to normalized frame stack')
+    return parser.parse_args()
+
+
+def normalize(frames_path, norm_path, normalized_path):
+    
+    t0 = time.time()
+    norm = imaging.load(norm_path).astype('float64')
+    norm = norm / np.mean(norm)
+    print('loading norm took:', time.time()-t0)
+
+    t0 = time.time()
+    frames = imaging.load(frames_path)
+    output = np.zeros(frames.shape, dtype=frames.dtype)
+    print('loading frames took:', time.time()-t0)
+
+    t0 = time.time()
+    for i, frame in enumerate(frames):
+        frame = np.array(frame)
+        frame = ( frame * norm ) + 0.5
+        output[i] = frame
+    print('normalizing frames took:', time.time()-t0)
+
+    t0 = time.time()
+    imaging.save(output, normalized_path)
+    print('saving normalized frames took:', time.time()-t0)
+
+
+def main():
+    args = arguments()
+    normalize(args.input, args.norm, args.output)
+
+
+if __name__ == '__main__':
+    main()
+
+
+
+
+

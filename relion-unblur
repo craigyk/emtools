@@ -1,0 +1,208 @@
+#!/eppec/storage/sw/relion_dog_picker/site/bin/python
+
+import os
+import sh
+import sys
+import time
+import math
+import pyfs
+import glob
+
+def arguments():
+    
+    import argparse
+
+    def floatlist(string):
+        return tuple(map(float, string.split(',')))
+
+    parser = argparse.ArgumentParser(
+        description='runs Niko\'s unblur on a bunch of images using a glob pattern, MPI friendly')
+    parser.add_argument('--glob', required=True,
+                        help='glob to MRC images')
+    parser.add_argument('-a', '--apix', type=float, required=True,
+                        help='angstroms per pixel')
+    parser.add_argument('-l', '--label', required=True,
+                        help='suffix label for unblurred files')
+    parser.add_argument('-v', '--kv', required=True, type=float,
+                        help='KV of microscope')
+    parser.add_argument('-e', '--expf', default=None, type=float,
+                        help='electrons per angstrom per frame if dose compensation is desired')
+    parser.add_argument('-n', '--norm', default=None,
+                        help='path to norm image')
+    return parser.parse_args()
+
+
+def bunzip2(srcpath, dstpath):
+    os.system('pbunzip2 %s -kc > %s' % (srcpath, dstpath))
+
+
+def bzip2(path):
+    sh.pbzip2(path)
+
+
+def unblur(frames_path, pixel_size, aligned_sum_path, aligned_shifts_path, exposure_per_frame, kv, aligned_frames_path=None, pre_exposure_dose=0.0, bfactor=1500, iterations=10, max_shift=200.0):
+    '''
+    < mrc path
+    < # of frames
+    < aligned output path
+    < output shifts file
+    < Apply dose filter (YES|NO)
+    < --- YES: Exposure per frame
+    < -------: Acceleration Voltage
+    < -------: Pre-exposure ammount
+    < -------: Save aligned frames?
+    '''
+    DEFAULT = ''
+    YES = 'YES'
+    NO = 'NO'
+
+    input  = []
+    input += [frames_path]
+    input += [DEFAULT]          # use all frames - default
+    input += [aligned_sum_path]
+    input += [aligned_shifts_path]
+    input += ['%.3f' % (pixel_size)]
+    if exposure_per_frame is not None:
+        input += [YES] # apply dose filter
+        input += ['%.2f' % (exposure_per_frame)]
+        input += ['%f' % (kv)]
+        input += ['%f' % (pre_exposure_dose)]
+    else:
+        input += [NO] # do not apply dose filter
+    if aligned_frames_path:
+        input += [YES]
+        input += [aligned_frames_path]
+    else:
+        input += [NO]  # save aligned frames
+    input += [YES] # set expert options
+    input += [NO]  # output FRC file
+    input += ['2.0'] # minimum initial shift resolution
+    input += ['%f' % (max_shift)]
+    input += ['%f' % (bfactor)]
+    input += ['1']   # half-width of central vertical line in Fourier mask
+    input += ['1']   # half-width of central horizontal line in Fourier mask
+    input += ['0.1'] # termination threshold for shifts (angstroms)
+    input += ['%d' % (iterations)]
+    if exposure_per_frame is not None:
+        input += [YES] # restore noise power
+    input += [YES] # verbose output
+    input += [DEFAULT] # new line to end file
+    input = '\n'.join(input)
+    print('input to unblur:')
+    print(input)
+    return sh.unblur(_in=input, _out=print)
+
+
+def label_path(path, label):
+    path, _ = pyfs.sext(path, full=True)
+    return path + label
+
+
+def htime(secs):
+    mins, secs = divmod(secs, 60)
+    hours, mins = divmod(mins, 60)
+    days, hours = divmod(hours, 24)
+    return '%02d:%02d:%02d:%02d' % (days, hours, mins, secs)
+
+
+def mktmppath(suffix):
+    import tempfile
+    _, path = tempfile.mkstemp(suffix=suffix)
+    return path
+
+
+def process(paths, norm_path, apix, label, expf, kv):
+    
+    def prepare(path):
+        if path.endswith('.bz2'):
+            unzipped_path = mktmppath(suffix='.unblur.mrc')
+            print('unzipping:', path, '->', unzipped_path)
+            bunzip2(path, unzipped_path)
+            return unzipped_path
+        elif path.endswith('.gzip'):
+            raise NotImplemented()
+        return path
+
+    n = len(paths)
+
+    for i, path in enumerate(paths):
+        start_time = time.time()
+        tmppath = prepare(path)
+        
+        normalized_frames = mktmppath('.unblur.normalized.mrc')
+        print('applying gain normalizations')
+        print('   ->', tmppath)
+        print('   ->', normalized_frames)
+        print('   ->', norm_path)
+        
+        sh.normalize_frames('-i', tmppath, '-o', normalized_frames, '--norm', norm_path)
+        
+        aligned_mrc_path = label_path(path, '_%s.mrc' % label)
+        tmp_aligned_frames_path = label_path(path, '_%s.tmp.mrc' % label)
+        aligned_frames_path = label_path(path, '_%s.mrcs' % label)
+        aligned_shifts_path = label_path(path, '_%s.txt' % label)
+        print('unblurring frames:', path, apix, label, expf, kv)
+        print('   ->', aligned_mrc_path)
+        print('   ->', aligned_shifts_path)
+        print('   ->', aligned_frames_path)
+        unblur(normalized_frames, apix, aligned_mrc_path, aligned_shifts_path, expf, kv, aligned_frames_path=tmp_aligned_frames_path)
+        
+        if not pyfs.samefile(path, tmppath):
+            pyfs.rm(tmppath)
+
+        if not pyfs.samefile(path, normalized_frames):
+            pyfs.rm(normalized_frames)
+
+        elapsed_time = time.time() - start_time
+        eta_time = (n-i) * elapsed_time
+        pyfs.mv(tmp_aligned_frames_path, aligned_frames_path)
+        print('  took: %s mins:secs, est: %s' %(htime(elapsed_time), htime(eta_time)))
+
+
+def joinlist(lists):
+    joined = []
+    for l in lists:
+        joined.extend(l)
+    return joined
+
+
+def splitlist(items, n):
+    if len(items) == 0:
+        return [[]] * n
+    k = int(math.ceil(float(len(items)) / n))
+    return [items[x:x+k] for x in range(0, len(items), k)]
+
+
+def mprint(rank, *args, **kwargs):
+    if rank == 0:
+        print(*args, **kwargs)
+
+
+if __name__ == '__main__':
+    
+    args = arguments()
+
+    from mpi4py import MPI
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+
+    if rank == 0:
+        mprint('mpi job running on %d processes' % (size))
+        images = glob.glob(args.glob)
+        mprint('  there are %d images to process' % len(images))
+        images = splitlist(images, size)
+    else:
+        images = None
+
+    args = comm.bcast(args, root=0)
+    images = comm.scatter(images, root=0)
+    print('unblurring %d images in process %d' % (len(images), rank))
+    process(images, args.norm, args.apix, args.label, args.expf, args.kv)
+    print('done!')
+    images = comm.gather(images, root=0)
+    
+    if rank == 0:
+        print(type(images))
+        print(len(joinlist(images)))
+
