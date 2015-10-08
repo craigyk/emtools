@@ -1,0 +1,52 @@
+#!/home/exacloud/lustre1/users/yoshiokc/sw/cky-tools/site/bin/python
+
+import os
+import re
+import sh
+import glob
+import numpy as np
+from collections import defaultdict as ddict
+
+import imaging
+
+def arguments():
+    
+    import argparse
+
+    def floatlist(string):
+        return tuple(map(float, string.split(',')))
+
+    parser = argparse.ArgumentParser(
+        description="normalize raw frame stacks")
+    parser.add_argument('-i', '--src', required=True,
+                        help='directory with EPU MRC frames')
+    parser.add_argument('-o', '--dst', required=True,
+                        help='directory to output merged MRCS files')
+    return parser.parse_args()
+
+
+def merge_mrcs(mrcs, merged):
+    #frames = [imaging.load(mrc)[0] for mrc in mrcs]
+    #imaging.save(frames, merged)
+    for mrc in mrcs:
+        sh.e2('proc2d', mrc, merged)
+
+
+def main():
+    args = arguments()
+    frames = glob.glob(os.path.join(args.src, '*_frames*.mrc'))
+    movies = ddict(dict)
+    for frame in frames:
+        path, fid = re.search('(.+)_frames_n(\d+).mrc', frame).groups()
+        movies[path][int(fid)] = frame
+    for base in movies:
+        movie_path = os.path.join(args.dst, os.path.basename(base) + '.mrcs')
+        movie_frames = [movies[base][fid] for fid in sorted(movies[base])]
+        print(movie_path)
+        for frame in movie_frames:
+            print('   +', frame)
+        merge_mrcs(movie_frames, movie_path)
+
+
+if __name__ == '__main__':
+    main()

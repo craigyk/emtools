@@ -1,5 +1,4 @@
-#!/eppec/storage/sw/relion_dog_picker/site/bin/python
-
+#!/home/exacloud/lustre1/users/yoshiokc/sw/cky-tools/site/bin/python
 
 import time
 import imaging

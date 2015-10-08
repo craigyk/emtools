@@ -1,4 +1,4 @@
-#!/eppec/storage/sw/relion_dog_picker/site/bin/python
+#!/home/exacloud/lustre1/users/yoshiokc/sw/cky-tools/site/bin/python
 
 import argparse
 import imaging
@@ -11,7 +11,7 @@ import numpy as np
 def arguments():
 
     def floatlist(string):
-        return tuple(map(float, string.split(',')))
+        return list(map(float, string.split(',')))
 
     parser = argparse.ArgumentParser(
         description='runs dog picker on an MRC image and outputs a relion compatible STAR file')
@@ -21,19 +21,20 @@ def arguments():
     group.add_argument('--star', help='path to STAR file with MRC images')
     group.add_argument('--glob', help='glob pattern for MRC images')
     
-    parser.add_argument('-p', '--parallel', type=int,
+    parser.add_argument('-p', '--parallel', type=int, default=1,
                         help='number of images to process in parallel')
     parser.add_argument('-r', '--range', type=floatlist, required=True,
                         help='range of pixel sizes to search')
     parser.add_argument('-b', '--bins', type=int, default=1,
-                        help='number of bins for particles, gets outputted as seperate STAR files with group # appended to file name')
+                        help='number of bins for particles, gets outputted as a seperate STAR files with group # appended to file name')
     parser.add_argument('-l', '--label', default='dog',
                         help='suffix label for STAR files.  known in Relion GUI as `Picking rootname`')
-    parser.add_argument('-t', '--thresholds', default=(0, 1.0), type=floatlist,
+    parser.add_argument('-t', '--thresholds', default=[], type=floatlist,
                         help='min and max thresholds for particle selection')
-    parser.add_argument('-i', '--invert', default=False, type=bool, 
+    parser.add_argument('-i', '--invert', default=False, action='store_true',
                         help='invert image so that particles are black on a white background')
-    
+    parser.add_argument('--debug', default=False, action='store_true',
+                        help='writes debug PNG images alongside the input files with an associated label')
     return parser.parse_args()
 
 
@@ -68,17 +69,40 @@ def log(image, size):
     return -imaging.filters.laplace(image, sigma)*sigma*sigma
 
 
-def detect(image, size, mint, maxt):
+def detect(image, size, mint=None, maxt=None, debug=None):
     zoom = min(1.0, 30.0 / size)
     reduced_image = imaging.filters.zoom(image, zoom)
     rzoom = float(reduced_image.shape[0]) / float(image.shape[0])
     czoom = float(reduced_image.shape[1]) / float(image.shape[1])
     reduced_size = np.mean([rzoom, czoom]) * size
     log_image = -log(reduced_image, reduced_size)
-    peaks = imaging.detection.peaks.maxima(log_image, 3)
-    peaks = [(p, v) for p, v in peaks if v <= maxt]
-    peaks = [(p, v) for p, v in peaks if v >= mint]
-    return zoom_peaks(peaks, [rzoom, czoom])
+    peaks = list(imaging.detection.peaks.maxima(log_image, 3))
+    if len(peaks):
+        pvalues = np.sort(np.array([v for _, v in peaks]))
+        if maxt is None:
+            maxt = pvalues[-1]
+        if mint is None:
+            mint = max(0, pvalues[0])
+        peaks = [(p, v) for p, v in peaks if v <= maxt]
+        peaks = [(p, v) for p, v in peaks if v >= mint]
+        if debug:
+            print('current peak range: %f -> %f' % (mint, maxt))
+            print('distribution within range:')
+            print('  low threshold -> max threshold: peak count')
+            counts, bins = np.histogram(pvalues, bins=10, range=(mint, maxt))
+            for idx in range(len(counts)):
+                print('  % 13.2f -> % 13.2f: %d' % (bins[idx], bins[idx+1], counts[idx]))
+            save_peaks(reduced_image, log_image, peaks, reduced_size, debug)
+        return zoom_peaks(peaks, [rzoom, czoom])
+    return []
+
+
+def inrange(v, mint=None, maxt=None):
+    if mint is None:
+        mint = v
+    if maxt is None:
+        maxt = v
+    return mint <= v <= maxt
 
 
 def colorize_log_map(logimage, mint, maxt):
@@ -96,8 +120,12 @@ def save_peaks(image, log_image, peaks, size, path):
     image = imaging.filters.norm(image, 0.01, 0.01, 0, 255)
     keys = log_peaks_as_keypoints(peaks, size)
     image = imaging.detection.keypoints.draw(image, keys)
-    imaging.save(image, path)
-    imaging.save(log_image, 'p-1.png')
+    picks_path = path + '.picks.png'
+    peaks_path = path + '.peaks.png'
+    print(' saving peaks png:', peaks_path)
+    print(' saving picks png:', picks_path)
+    imaging.save(image, picks_path)
+    imaging.save(log_image, peaks_path)
 
 
 def zoom_peaks(peaks, zoom):
@@ -145,6 +173,13 @@ def get_micrographs(args):
     raise ValueError()
 
 
+def argidx(arg, idx, default):
+    try:
+        return arg[idx]
+    except IndexError:
+        return default
+
+
 if __name__ == '__main__':
 
     args = arguments()
@@ -157,13 +192,19 @@ if __name__ == '__main__':
             if args.star:
                 mic = pyfs.join(pyfs.dpath(args.star), mic)
             image = imaging.load(mic)[0]
-        except FileNotFoundError:
+        except Exception as e:
+            print('[error] failed to process image: %s, %s' % (mic, e))
             return
         if args.invert:
             image = imaging.filters.invert(image)
-        keys = list(detect(image, size, args.thresholds[0], args.thresholds[1]))
+        mint = argidx(args.thresholds, 0, None)
+        maxt = argidx(args.thresholds, 1, None)
+        debug = None
+        if args.debug:
+            debug = pyfs.rext(mic, full=True) + '_%s' % (args.label)
+        keys = list(detect(image, size, mint, maxt, debug))
         print('found %d particles in image %s' % (len(keys), mic))
-        star = pyfs.rext(mic, full=True) + '_%s.star' % (args.label)
+        star = pyfs.rext(mic, full=False) + '_%s.star' % (args.label)
         save_star(keys, star)
 
     import multiprocessing as mp
