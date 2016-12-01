@@ -1,0 +1,107 @@
+#!/usr/bin/env cky-python
+
+import time
+import pyfs
+import glob
+
+import subprocess as sp
+
+def arguments():
+    
+    import argparse
+
+    def floatlist(string):
+        return tuple(map(float, string.split(',')))
+
+    parser = argparse.ArgumentParser(
+        description='runs Niko\'s unblur on a bunch of images using a glob pattern, MPI friendly')
+    parser.add_argument('-i', '--frames', required=True, nargs='+',
+                        help='input MRCS stacks')
+    parser.add_argument('-a', '--apix', type=float, required=True,
+                        help='angstroms per pixel')
+    parser.add_argument('-l', '--label', required=True,
+                        help='suffix label for unblurred files')
+    parser.add_argument('-v', '--kv', default=None, type=float,
+                        help='KV of microscope')
+    parser.add_argument('-e', '--expf', default=None, type=float,
+                        help='electrons per angstrom per frame if dose compensation is desired')
+    parser.add_argument('-n', '--norm', default=None,
+                        help='path to norm image')
+    parser.add_argument('--invert-norm', default=False, action='store_true',
+                        help='invert norm to apply')
+    parser.add_argument('--save-frames', action='store_true',
+                        help='save aligned frame stack (will be compressed by gzip)')
+    parser.add_argument('--nodes', default=1, type=int,
+                        help='number of nodes to run on via slurm')
+    return parser.parse_args()
+
+
+def label_path(path, label):
+    path, _ = pyfs.sext(path, full=False)
+    return path + label
+
+
+def htime(secs):
+    mins, secs = divmod(secs, 60)
+    hours, mins = divmod(mins, 60)
+    days, hours = divmod(hours, 24)
+    return '%02d:%02d:%02d:%02d d:h:m:s' % (days, hours, mins, secs)
+
+
+def unblurcmd(path, apix, kv=None, expf=None, norm=None, avg=None, shifts=None, frames=None, invert_norm=False):
+    cmd = ['srun', '-u', '-N', '1', '--ntasks', '1', '--exclusive', 'unblur-cli']
+    cmd += ['-i', path]
+    cmd += ['-a', str(apix)]
+    if kv is not None:
+        cmd += ['-v', str(kv)]
+    if expf is not None:
+        cmd += ['-e', str(expf)]
+    if norm is not None:
+        cmd += ['-n', norm]
+    if avg is not None:
+        cmd += ['-o', avg]
+    if invert_norm:
+        cmd += ['--invert-norm']
+    if frames is not None:
+        cmd += ['--save-frames', frames]
+    return cmd
+
+
+def process(paths, args):
+    
+    from multiprocessing import Pool
+    
+    print('processing %d stacks over %d nodes' % (len(paths), args.nodes)) 
+    
+    pool = Pool(args.nodes)
+    for path in paths:
+        if path.endswith('_%s.mrc' % args.label):
+            print('skipping:', path)
+            continue 
+        aligned_mrc_path = label_path(path, '_%s.mrc' % args.label)
+        aligned_shifts_path = label_path(path, '_%s.shifts.txt' % args.label)
+        aligned_frames_path = None
+        if args.save_frames:
+            aligned_frames_path = label_path(path, '_%s.mrcs' % args.label)
+        if pyfs.exists(aligned_mrc_path):
+            print('skipping:', path)
+            continue
+        cmd = unblurcmd(path, args.apix, kv=args.kv,
+                                             norm=args.norm,
+                                             expf=args.expf,
+                                             avg=aligned_mrc_path,
+                                             shifts=aligned_shifts_path,
+                                             frames=aligned_frames_path,
+                                             invert_norm=args.invert_norm)
+        time.sleep(0.01)
+        pool.apply_async(sp.call, args=(cmd,))
+    
+    pool.close()
+    pool.join()
+
+
+if __name__ == '__main__':
+    
+    args = arguments()
+    process(args.frames, args)
+    

@@ -1,0 +1,45 @@
+#!/usr/bin/env cky-python
+
+from unblur import unblur
+
+def arguments():
+    
+    import argparse
+
+    def floatlist(string):
+        return tuple(map(float, string.split(',')))
+
+    parser = argparse.ArgumentParser(
+        description='runs Niko\'s unblur on a bunch of images using a glob pattern, MPI friendly')
+    parser.add_argument('-i', '--mrc', required=True,
+                        help='input MRC frame stack (supports .zip, .bz2 compressed files)')
+    parser.add_argument('-a', '--apix', type=float, required=True,
+                        help='angstroms per pixel')
+    parser.add_argument('-v', '--kv', default=None, type=float,
+                        help='KV of microscope')
+    parser.add_argument('-e', '--expf', default=None, type=float,
+                        help='electrons per angstrom per frame if dose compensation is desired')
+    parser.add_argument('-n', '--norm', default=None,
+                        help='path to norm image')
+    parser.add_argument('--save-frames', default=None,
+                        help='save aligned frame stack (will be compressed by gzip)')
+    parser.add_argument('--save-shifts', default=None,
+                        help='save slignment shifts as text file')
+    parser.add_argument('-o', '--save-average', default=None,
+                        help='save aligned average as MRC')
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    
+    args = arguments()
+
+    unblur(args.mrc, args.apix, kv=args.kv,
+                     norm_path=args.norm,
+                     exposure_per_frame=args.expf,
+                     aligned_sum_path=args.save_average,
+                     aligned_frc_path=None,
+                     aligned_shifts_path=args.save_shifts,
+                     aligned_frames_path=args.save_frames)
+
+    
