@@ -16,7 +16,8 @@ def get_arguments():
   parser = argparse.ArgumentParser(
     description='aligns byte-packed SerialEM images using motioncor2')
 
-  parser.add_argument('-i', '--mrcs', nargs='+', help='paths to SerialEM images')
+  parser.add_argument('-i', '--mrcs', nargs='+', required=True,
+                        help='paths to SerialEM images')
   parser.add_argument('-d', '--defects', default=None,
                         help='Digital Micrograph defects file')
   parser.add_argument('-n', '--norm', default=None,
@@ -29,24 +30,32 @@ def get_arguments():
                         help='KV of microscope')
   parser.add_argument('-e', '--expf', default=None, type=float,
                         help='electrons per angstrom per frame if dose compensation is desired')
-  parser.add_argument('-b', '--bfactor', default=100, type=float,
-                        help='electrons per angstrom per frame if dose compensation is desired')
+  parser.add_argument('-b', '--bfactor', default=100.0, type=float,
+                        help='bfactor used for alignment')
   parser.add_argument('--gpus', default=1, type=int,
                         help='number of gpus to run on')
   parser.add_argument('--group', default=1, type=int,
                         help='number of frames to group to improve SNR')
-
+  parser.add_argument('--patches', default=5, type=int,
+                        help='number of patches for local refinement')
+  parser.add_argument('-u', '--unpack', default=False, action='store_true',
+                        help='unpack byte-packed frames')
   return parser.parse_args()
 
 
 
 
-def motioncor2(src, dst, gain=None, expf=None, group=1, bfactor=200, kv=300, apix=1.0, patches=(5, 5), gpu=0):
+def motioncor2(src, dst, gain=None, expf=None, group=1, bfactor=200, kv=300, apix=1.0, patches=1, gpu=0):
   cmd  = ['motioncor2']
-  cmd += ['-InMrc', src]
+  if src.endswith('.mrc'):
+    cmd += ['-InMrc', src]
+  elif src.endswith('.tif'):
+    cmd += ['-InTiff', src]
+  else:
+    raise ArgumentError('file: %s must be TIFF or MRC'%(src))
   cmd += ['-OutMrc', dst]
   cmd += ['-Bft', bfactor]
-  cmd += ['-Patch', patches[0], patches[1]]
+  cmd += ['-Patch', patches, patches]
   cmd += ['-Kv', kv]
   cmd += ['-PixSize', apix]
   cmd += ['-Group', group]
@@ -62,11 +71,14 @@ def pbunzip2(src, dst):
   if src.endswith('.bz2'):
     os.system('pbunzip2 %s -c > %s'%(src, dst))
     return dst
+  elif src.endswith('.zst'):
+    os.system('pzstd -d -o %s %s'%(dst, src))
+    return dst
   else:
     return src
 
 
-def process(path, aligned, defects, norm, bfactor, expf, kv, apix, group, gpu):
+def process(path, aligned, args, gpu, should_unpack):
   
   aligned_dw = unpack.label(aligned, 'dw')
   
@@ -79,15 +91,16 @@ def process(path, aligned, defects, norm, bfactor, expf, kv, apix, group, gpu):
   tmp_aligned_dw  = pyfs.join(tmpdir, 'aligned_DW.mrc')
   
   tmp_unzipped = pbunzip2(path, tmp_unzipped)
-
-  if defects is not None and norm is not None: 
-    unpack.unpack(tmp_unzipped, tmp_unpacked, defects, norm, mode='float')
-    motioncor2(tmp_unpacked, tmp_aligned, gain=None, bfactor=bfactor, group=group, expf=expf, kv=kv, apix=apix, gpu=gpu)
+  
+  if should_unpack: 
+    unpack.unpack(tmp_unzipped, tmp_unpacked, args.defects, args.norm, mode='byte')
+    motioncor2(tmp_unpacked, tmp_aligned, gain=None, bfactor=args.bfactor, group=args.group, expf=args.expf, kv=args.kv, apix=args.apix, patches=args.patches, gpu=gpu)
   else:
-    motioncor2(tmp_unzipped, tmp_aligned, gain=norm, expf=expf, bfactor=bfactor, group=group, kv=kv, apix=apix, gpu=gpu)  
+    motioncor2(tmp_unzipped, tmp_aligned, gain=args.norm, expf=args.expf, bfactor=args.bfactor, group=args.group, kv=args.kv, apix=args.apix, patches=args.patches, gpu=gpu)  
 
   shutil.copy(tmp_aligned, aligned)
-  shutil.copy(tmp_aligned_dw, aligned_dw)
+  if pyfs.exists(tmp_aligned_dw):
+    shutil.copy(tmp_aligned_dw, aligned_dw)
   shutil.rmtree(tmpdir)
 
 
@@ -109,8 +122,8 @@ def main():
       print(dst, 'exists, skipping', path)
       continue
     #print(path, '->', dst)
-    #process(path, dst, args.defects, args.norm, args.expf, args.kv, args.apix, args.group, gpu % args.gpus)
-    pool.apply_async(process, args=(path, dst, args.defects, args.norm, args.bfactor, args.expf, args.kv, args.apix, args.group, gpu % args.gpus))
+    #process(path, dst, args, gpu % args.gpus)
+    pool.apply_async(process, args=(path, dst, args, gpu % args.gpus, args.unpack))
     gpu += 1
   pool.close()
   pool.join()

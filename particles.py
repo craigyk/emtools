@@ -31,11 +31,11 @@ def dedup(particles, radius):
     tree  = KDTree(positions(group))
     pairs = tree.query_pairs(radius)
     keep  = connected_components(len(group), pairs)
-    if len(pairs) > 0:
-      print('image:', image, 'has', len(pairs), 'duplicates')
-      print(pairs)
-      print(keep)
-      print('-----')
+    #if len(pairs) > 0:
+      #print('image:', image, 'has', len(pairs), 'duplicates')
+      #print(pairs)
+      #print(keep)
+      #print('-----')
     for idx in keep:
       cleaned += [tuple(group[idx])]
   return np.array(cleaned, dtype=particles.dtype)
@@ -63,6 +63,7 @@ if __name__ == '__main__':
   ps = particles.load(src)
   print('deduping...')
   fs = particles.dedup(ps, radius)
+  print('removed: %d duplicates'%(len(ps)-len(fs)))
   print('saving...')
   particles.save(fs, dst)
 

@@ -14,8 +14,8 @@ def main():
     dst = unpack.label(mrc, args.label)
     if unpack.pyfs.exists(dst):
       continue
-    unpack.unpack(mrc, dst, args.defects, args.norm, args.mode)
-    #pool.apply_async(unpack.unpack, args=(mrc, dst, args.defects, args.norm, args.mode))
+    #unpack.unpack(mrc, dst, args.defects, args.norm, args.mode)
+    pool.apply_async(unpack.unpack, args=(mrc, dst, args.defects, args.norm, args.mode))
   pool.close()
   pool.join()
 

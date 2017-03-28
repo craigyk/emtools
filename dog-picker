@@ -37,6 +37,8 @@ def arguments():
                         help='exclude picks with a mean value larger than this')
     parser.add_argument('--debug', default=False, action='store_true',
                         help='writes debug PNG images alongside the input files with an associated label')
+    parser.add_argument('-f', '--force', default=False, action='store_true',
+                        help='force overwriting existing picks')
     return parser.parse_args()
 
 
@@ -71,9 +73,19 @@ def log(image, size):
     return -imaging.filters.laplace(image, sigma)*sigma*sigma
 
 
+def normalize(image):
+    pixels = np.sort(image.flat)
+    mint = int(0.3 * len(pixels))
+    maxt = int(0.7 * len(pixels))
+    meanv = np.mean(pixels[mint:maxt])
+    stdev = np.std(pixels[mint:maxt])
+    return ( image - meanv ) / stdev
+
+
 def detect(image, size, mint=None, maxt=None, debug=None, meanmax=None):
-    zoom = min(1.0, 20.0 / size)
+    zoom = min(1.0, 30.0 / size)
     reduced_image = imaging.filters.zoom(image, zoom)
+    reduced_image = normalize(reduced_image)
     rzoom = float(reduced_image.shape[0]) / float(image.shape[0])
     czoom = float(reduced_image.shape[1]) / float(image.shape[1])
     reduced_size = np.mean([rzoom, czoom]) * size
@@ -85,6 +97,7 @@ def detect(image, size, mint=None, maxt=None, debug=None, meanmax=None):
             maxt = pvalues[-1]
         if mint is None:
             mint = pvalues[0]
+        maxt = max(maxt, mint)
         peaks = [(p, v) for p, v in peaks if v <= maxt]
         peaks = [(p, v) for p, v in peaks if v >= mint]
         if meanmax is not None:
@@ -211,7 +224,11 @@ if __name__ == '__main__':
         try:
             if args.star:
                 mic = pyfs.join(pyfs.dpath(args.star), mic)
-            image = imaging.load(mic)[0]    
+            image = imaging.load(mic)[0]
+            star = pyfs.rext(mic, full=False) + '_%s.star' % (args.label)
+            if not args.force and pyfs.exists(star):
+                print('[warning] skipping %s' % (mic))
+                return    
         except KeyboardInterrupt:
             exit(-1)
         except Exception as e:
@@ -225,7 +242,6 @@ if __name__ == '__main__':
         if args.debug:
             debug = pyfs.rext(mic, full=False) + '_%s' % (args.label)
         keys = list(detect(image, size, mint, maxt, debug, meanmax))
-        star = pyfs.rext(mic, full=False) + '_%s.star' % (args.label)
         if len(keys) > 5:
             save_star(keys, star)
             print('found %d particles in image %s -> %s' % (len(keys), mic, star))
