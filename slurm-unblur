@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 #!/home/exacloud/lustre1/users/yoshiokc/sw/cky-tools/site/bin/python
+=======
+#!/usr/bin/env cky-python
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
 
 import time
 import pyfs
@@ -33,12 +37,15 @@ def arguments():
                         help='save aligned frame stack (will be compressed by gzip)')
     parser.add_argument('--nodes', default=1, type=int,
                         help='number of nodes to run on via slurm')
+<<<<<<< HEAD
     parser.add_argument('--partition', default=None,
                         help='number of nodes to run on via slurm')
     parser.add_argument('--bfactor', default=1500, type=int,
                         help='blur to apply to frames for alignment')
     parser.add_argument('--limit', default=None, type=float,
                         help='if shifts are larger than this value do not save result')
+=======
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
     return parser.parse_args()
 
 
@@ -54,11 +61,16 @@ def htime(secs):
     return '%02d:%02d:%02d:%02d d:h:m:s' % (days, hours, mins, secs)
 
 
+<<<<<<< HEAD
 def unblurcmd(path, apix, kv=None, expf=None, norm=None, avg=None, bfactor=None, shifts=None, frames=None, invert_norm=False, partition=None, limit=None):
     cmd = ['srun', '-u', '-N', '1', '--ntasks', '1', '--exclusive'] 
     if partition is not None:
         cmd += ['-p', partition]
     cmd += ['unblur-cli']
+=======
+def unblurcmd(path, apix, kv=None, expf=None, norm=None, avg=None, shifts=None, frames=None, invert_norm=False):
+    cmd = ['srun', '-u', '-N', '1', '--ntasks', '1', '--exclusive', 'unblur-cli']
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
     cmd += ['-i', path]
     cmd += ['-a', str(apix)]
     if kv is not None:
@@ -69,17 +81,24 @@ def unblurcmd(path, apix, kv=None, expf=None, norm=None, avg=None, bfactor=None,
         cmd += ['-n', norm]
     if avg is not None:
         cmd += ['-o', avg]
+<<<<<<< HEAD
     if bfactor is not None:
         cmd += ['--bfactor', str(bfactor)]
+=======
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
     if invert_norm:
         cmd += ['--invert-norm']
     if frames is not None:
         cmd += ['--save-frames', frames]
+<<<<<<< HEAD
     if limit is not None:
         cmd += ['--limit', limit]
     if shifts is not None:
         cmd += ['--save-shifts', shifts]
     return [str(x) for x in cmd]
+=======
+    return cmd
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
 
 
 def process(paths, args):
@@ -101,6 +120,7 @@ def process(paths, args):
         if pyfs.exists(aligned_mrc_path):
             print('skipping:', path)
             continue
+<<<<<<< HEAD
         cmd = unblurcmd(path, args.apix, 
                               kv=args.kv,
                               norm=args.norm,
@@ -112,6 +132,15 @@ def process(paths, args):
                               partition=args.partition,
                               bfactor=args.bfactor,
                               limit=args.limit)
+=======
+        cmd = unblurcmd(path, args.apix, kv=args.kv,
+                                             norm=args.norm,
+                                             expf=args.expf,
+                                             avg=aligned_mrc_path,
+                                             shifts=aligned_shifts_path,
+                                             frames=aligned_frames_path,
+                                             invert_norm=args.invert_norm)
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
         time.sleep(0.01)
         pool.apply_async(sp.call, args=(cmd,))
     

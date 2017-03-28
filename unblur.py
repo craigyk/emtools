@@ -3,7 +3,10 @@
 import os
 import sh
 import pyfs
+<<<<<<< HEAD
 import socket
+=======
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
 
 import numpy as np
 from normalize import normalize
@@ -50,11 +53,17 @@ def unblur(frames_path, pixel_size, kv=None,
                                     exposure_per_frame=None,
                                     pre_exposure_dose=0.0, 
                                     bfactor=2500, 
+<<<<<<< HEAD
                                     iterations=10, 
                                     max_shift=50.0,
                                     initial_shift=1.0,
                                     invert_norm=False,
                                     limit=None):
+=======
+                                    iterations=20, 
+                                    max_shift=100.0,
+                                    initial_shift=3.0):
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
 
 
     # use full pathnames, because we will be running
@@ -89,7 +98,11 @@ def unblur(frames_path, pixel_size, kv=None,
                 pyfs.mv(tmppath, dst)
                 return dst
         except Exception as e:
+<<<<<<< HEAD
             uprint('[error]:', e)
+=======
+            print('[error]:', e)
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
 
     frames_path = resolve(frames_path)
     aligned_frames_path = resolve(aligned_frames_path)
@@ -121,8 +134,13 @@ def unblur(frames_path, pixel_size, kv=None,
         _aligned_frc_path = tempit('aligned.frc')   
 
         if norm_path is not None:
+<<<<<<< HEAD
             print('normalizing image (inverted: %s):\n  %s -> %s' % (str(invert_norm), frames_path, tempit('input.normed.mrc')))
             _frames_path = normalize(_frames_path, norm_path, tempit('input.normed.mrc'), invert=invert_norm)
+=======
+            print('normalizing image:\n  %s -> %s' % (frames_path, tempit('input.normed.mrc')))
+            _frames_path = normalize(_frames_path, norm_path, tempit('input.normed.mrc'))
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
 
         input  = []
         input += [_frames_path]
@@ -170,6 +188,7 @@ def unblur(frames_path, pixel_size, kv=None,
         print('            shifts -> %s' % (_aligned_shifts_path))
         sh.unblur(_in=input, _cwd=tmpdir)
         shifts = get_shifts(_aligned_shifts_path)
+<<<<<<< HEAD
         total_shift = np.sum(shifts)
         print('  total shift:', total_shift)
 	
@@ -181,6 +200,10 @@ def unblur(frames_path, pixel_size, kv=None,
             print('   [warning]: shift too large, %f > %f, not saving'%(total_shift, limit))
             return
 
+=======
+        print('  mean shifts:', np.sum(shifts))
+	
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
         saveit(_aligned_frc_path, aligned_frc_path)
         saveit(_aligned_sum_path, aligned_sum_path)
         saveit(_aligned_frames_path, aligned_frames_path)
@@ -195,7 +218,10 @@ def unblur(frames_path, pixel_size, kv=None,
     finally:
         pyfs.rmtree(tmpdir)
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
 def get_shifts(path):
     coords = []
     with open(path, 'rb') as src:

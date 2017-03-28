@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 
+=======
+#!/usr/bin/env cky-python
+
+import particles
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
 import pystar2
 import numpy as np
 from scipy.spatial import cKDTree as KDTree
@@ -29,11 +35,19 @@ def dedup(particles, radius):
     tree  = KDTree(positions(group))
     pairs = tree.query_pairs(radius)
     keep  = connected_components(len(group), pairs)
+<<<<<<< HEAD
     if len(pairs) > 0:
       print('image:', image, 'has duplicates')
       print(pairs)
       print(keep)
       print('-----')
+=======
+    #if len(pairs) > 0:
+      #print('image:', image, 'has', len(pairs), 'duplicates')
+      #print(pairs)
+      #print(keep)
+      #print('-----')
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
     for idx in keep:
       cleaned += [tuple(group[idx])]
   return np.array(cleaned, dtype=particles.dtype)
@@ -51,3 +65,22 @@ def connected_components(size, pairs):
     comps[p2] = parent
   return set(comps)
 
+<<<<<<< HEAD
+=======
+
+if __name__ == '__main__':
+  import sys
+  radius = float(sys.argv[1])
+  src = sys.argv[2]
+  dst = sys.argv[3]
+  print('loading...')
+  ps = particles.load(src)
+  print('deduping...')
+  fs = particles.dedup(ps, radius)
+  print('removed: %d duplicates'%(len(ps)-len(fs)))
+  print('saving...')
+  particles.save(fs, dst)
+
+
+
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab

@@ -24,6 +24,10 @@ def arguments():
 
 def bincmd(path, args):
     cmd  = ['srun', 
+<<<<<<< HEAD
+=======
+            '-t', 10, 
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
             '-u'] 
     cmd += ['bin-images']
     cmd += ['-i', path]
@@ -46,6 +50,7 @@ def main(args):
     
     from multiprocessing import Pool
     
+<<<<<<< HEAD
     pool = Pool(args.processes)
     count = 0
     for path in args.input:
@@ -58,6 +63,17 @@ def main(args):
 
     print('processing %d stacks over %d processes' % (count, args.processes))
 
+=======
+    print('processing %d stacks over %d processes' % (len(args.input), args.processes))
+    
+    pool = Pool(args.processes)
+
+    for path in args.input:
+        if pyfs.exists(label(path, args.label)):
+            continue
+        pool.apply_async(call, args=bincmd(path, args))
+    
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
     pool.close()
     pool.join()
 

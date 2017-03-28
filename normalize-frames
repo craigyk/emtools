@@ -1,0 +1,34 @@
+#!/usr/bin/env cky-python
+
+from normalize import normalize
+
+
+def arguments():
+    
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="normalize raw frame stacks")
+    parser.add_argument('-i', '--input', required=True,
+                        help='input MRC frame stack')
+    parser.add_argument('--norm', required=True,
+                        help='path to MRC norm reference')
+    parser.add_argument('-o', '--output', required=True,
+                        help='path to normalized frame stack')
+    parser.add_argument('--invert', default=False, action='store_true',
+                        help='invert the nomalization image')
+    return parser.parse_args()
+
+
+def main():
+    args = arguments()
+    normalize(args.input, args.norm, args.output, args.invert)
+
+
+if __name__ == '__main__':
+    main()
+
+
+
+
+

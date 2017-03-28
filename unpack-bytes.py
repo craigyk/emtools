@@ -1,6 +1,7 @@
 #!/usr/bin/env cky-python
 
 import os
+<<<<<<< HEAD
 import sys
 import multiprocessing as mp
 
@@ -60,6 +61,23 @@ def main():
   pool = mp.Pool(procs)
   for mrc in args.mrcs:
     pool.apply_async(unpack, args=(mrc, args.label, args.defects, args.norm), callback=progress)
+=======
+import unpack
+import multiprocessing as mp
+
+def main():
+  
+  args = unpack.get_arguments()
+  procs = int(os.environ.get('SLURM_JOB_CPUS_PER_NODE', default='1'))
+  
+  pool = mp.Pool(procs)
+  for mrc in args.mrcs:
+    dst = unpack.label(mrc, args.label)
+    if unpack.pyfs.exists(dst):
+      continue
+    #unpack.unpack(mrc, dst, args.defects, args.norm, args.mode)
+    pool.apply_async(unpack.unpack, args=(mrc, dst, args.defects, args.norm, args.mode))
+>>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
   pool.close()
   pool.join()
 
