@@ -10,6 +10,8 @@ import glob
 
 from contextlib import contextmanager
 
+from normalize import normalize
+
 def arguments():
     
     import argparse
@@ -109,8 +111,11 @@ def unblur(frames_path, pixel_size, kv=None,
                 uprint('compressing:\n  %s -> %s\n' % (src, dst))
                 return gzip(src, dst)
             else:
+                tmppath = dst + '.tmp'
                 uprint('saving:\n  %s -> %s\n' % (src, dst))
-                return pyfs.cp(src, dst)
+                pyfs.cp(src, tmppath)
+                pyfs.mv(tmppath, dst)
+                return dst
         except Exception as e:
             uprint('[error]:', e)
 
@@ -119,6 +124,10 @@ def unblur(frames_path, pixel_size, kv=None,
     aligned_shifts_path = resolve(aligned_shifts_path)
     aligned_sum_path = resolve(aligned_sum_path)
     aligned_frc_path = resolve(aligned_frc_path)
+
+    if pyfs.exists(aligned_sum_path):
+        print('  [warning] aligned frames already exist, skipping')
+        return 
 
     def unblurit(tmpdir, frames_path):
 
@@ -195,7 +204,7 @@ def unblur(frames_path, pixel_size, kv=None,
         tmpdir = mkdtemp()
         return unblurit(tmpdir, frames_path)
     except Exception as e:
-        uprint('[error] unblurring image\n', e)
+        #uprint('[error] unblurring image\n', e)
         raise
     finally:
         pyfs.rmtree(tmpdir)
@@ -210,7 +219,7 @@ def uprint(*msgs):
 
 
 def label_path(path, label):
-    path, _ = pyfs.sext(path, full=True)
+    path, _ = pyfs.sext(path, full=False)
     return path + label
 
 
@@ -221,11 +230,6 @@ def htime(secs):
     return '%02d:%02d:%02d:%02d' % (days, hours, mins, secs)
 
 
-def normalize(src, norm, dst):
-    sh.normalize_frames('-i', src, '-o', dst, '--norm', norm)
-    return dst
-
-
 def process(paths, args):
     
     n = len(paths)
@@ -234,21 +238,24 @@ def process(paths, args):
         start_time = time.time()
         
         aligned_mrc_path = label_path(path, '_%s.mrc' % args.label)
+        aligned_shifts_path = label_path(path, '_%s.shifts.txt' % args.label)
         aligned_frames_path = None
         if args.save_frames:
             aligned_frames_path = label_path(path, '_%s.mrcs.gz' % args.label)
-        unblur(path, args.apix, kv=args.kv,
+        try: 
+            unblur(path, args.apix, kv=args.kv,
                            norm_path=args.norm,
                            exposure_per_frame=args.expf,
                            aligned_sum_path=aligned_mrc_path,
                            aligned_frc_path=None,
-                           aligned_shifts_path=None,
+                           aligned_shifts_path=aligned_shifts_path,
                            aligned_frames_path=aligned_frames_path)
+        except Exception as e:
+            print('error running unblur on:', path)
         
         elapsed_time = time.time() - start_time
         eta_time = (n-i) * elapsed_time
-        uprint('took: %s mins:secs, est: %s\n' %(htime(elapsed_time), htime(eta_time)))
-
+        uprint('%d of %d done, last: %s, eta: %s\n' % (i, n, htime(elapsed_time), htime(eta_time)))
 
 def joinlist(lists):
     joined = []
@@ -268,7 +275,6 @@ if __name__ == '__main__':
     
     args = arguments()
 
-    
     from mpi4py import MPI
     mpicomm = MPI.COMM_WORLD
     mpirank = mpicomm.Get_rank()
@@ -276,8 +282,11 @@ if __name__ == '__main__':
     
     if mpirank == 0:
         images = glob.glob(args.glob)
+        olen = len(images)
         uprint('running on %d processes\n' % (mpisize))
-        uprint('  there are %d images to process\n' % len(images))
+        uprint('  there are %d images to process\n' % olen)
+        images = [p for p in images if not pyfs.exists(label_path(p, '_%s.mrc' % args.label))]
+        uprint('  skipping %d because they are already processed\n' % (olen-len(images)))
         images = splitlist(images, mpisize)
     else:
         images = None

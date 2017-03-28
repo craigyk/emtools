@@ -9,6 +9,8 @@ from collections import defaultdict as ddict
 
 import imaging
 
+proc2d = sh.Command('e2proc2d.py')
+
 def arguments():
     
     import argparse
@@ -22,14 +24,18 @@ def arguments():
                         help='directory with EPU MRC frames')
     parser.add_argument('-o', '--dst', required=True,
                         help='directory to output merged MRCS files')
+    parser.add_argument('-p', '--processes', default=1, type=int,
+                        help='number of stacks to process in parallel')
     return parser.parse_args()
 
 
 def merge_mrcs(mrcs, merged):
-    #frames = [imaging.load(mrc)[0] for mrc in mrcs]
-    #imaging.save(frames, merged)
     for mrc in mrcs:
-        sh.e2('proc2d', mrc, merged)
+        proc2d(mrc, merged)
+    #base,_ = os.path.splitext(merged)
+    #avg = base + '.mrc'
+    #proc2d(merged, avg, '--average')
+    print('->', merged)
 
 
 def main():
@@ -39,13 +45,23 @@ def main():
     for frame in frames:
         path, fid = re.search('(.+)_frames_n(\d+).mrc', frame).groups()
         movies[path][int(fid)] = frame
+    import multiprocessing as mp
+    pool = mp.Pool(args.processes)
+    done = 0
     for base in movies:
         movie_path = os.path.join(args.dst, os.path.basename(base) + '.mrcs')
         movie_frames = [movies[base][fid] for fid in sorted(movies[base])]
-        print(movie_path)
-        for frame in movie_frames:
-            print('   +', frame)
-        merge_mrcs(movie_frames, movie_path)
+        def progress():
+            nonlocal done
+            print(movie_path)
+            for frame in movie_frames:
+                print('   +', frame)
+            done += 1
+            print(' done: %d of %d' % (done, len(movies)))
+        pool.apply_async(merge_mrcs, args=(movie_frames, movie_path))
+        #merge_mrcs(movie_frames, movie_path)
+    pool.close()
+    pool.join()
 
 
 if __name__ == '__main__':
