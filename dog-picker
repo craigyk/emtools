@@ -1,4 +1,4 @@
-#!/eppec/storage/sw/cky-tools/site/bin/python
+#!/usr/bin/env cky-python
 
 import argparse
 import imaging
