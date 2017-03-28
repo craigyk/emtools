@@ -1,0 +1,69 @@
+#!/home/exacloud/lustre1/users/yoshiokc/sw/cky-tools/site/bin/python
+
+import pyfs
+import subprocess as sp
+
+def arguments():
+    
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='runs Niko\'s unblur on a bunch of images using a glob pattern, MPI friendly')
+    parser.add_argument('-i', '--input', required=True, nargs='+',
+                        help='input MRCS stacks')
+    parser.add_argument('-l', '--label', required=True,
+                        help='suffix label for unblurred files')
+    parser.add_argument('-p', '--processes', default=1, type=int,
+                        help='number of processes to run on via slurm')
+    parser.add_argument('-b', '--binby', required=True, type=int,
+                        help='binning factor')
+    parser.add_argument('--fft', default=False, action='store_true',
+                        help='use fourier cropping') 
+    return parser.parse_args()
+
+
+def bincmd(path, args):
+    cmd  = ['srun', 
+            '-u'] 
+    cmd += ['bin-images']
+    cmd += ['-i', path]
+    cmd += ['-l', args.label]
+    cmd += ['-b', args.binby]
+    if args.fft:
+        cmd += ['--fft']
+    return tuple(map(str, cmd))
+
+
+def label(path, label):
+    base, exts = pyfs.sext(path)
+    return "%s_%s.%s" % (base, label, exts)
+
+def call(*cmds):
+    return sp.call(cmds)
+
+
+def main(args):
+    
+    from multiprocessing import Pool
+    
+    pool = Pool(args.processes)
+    count = 0
+    for path in args.input:
+        if pyfs.exists(label(path, args.label)):
+            continue
+        if path.endswith('_%s.mrc' % (args.label)):
+            continue
+        pool.apply_async(call, args=bincmd(path, args))
+        count += 1
+
+    print('processing %d stacks over %d processes' % (count, args.processes))
+
+    pool.close()
+    pool.join()
+
+
+if __name__ == '__main__':
+    
+    args = arguments()
+    main(args)
+    
