@@ -1,10 +1,6 @@
-<<<<<<< HEAD
-
-=======
 #!/usr/bin/env cky-python
 
 import particles
->>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
 import pystar2
 import numpy as np
 from scipy.spatial import cKDTree as KDTree
@@ -35,19 +31,11 @@ def dedup(particles, radius):
     tree  = KDTree(positions(group))
     pairs = tree.query_pairs(radius)
     keep  = connected_components(len(group), pairs)
-<<<<<<< HEAD
-    if len(pairs) > 0:
-      print('image:', image, 'has duplicates')
-      print(pairs)
-      print(keep)
-      print('-----')
-=======
     #if len(pairs) > 0:
       #print('image:', image, 'has', len(pairs), 'duplicates')
       #print(pairs)
       #print(keep)
       #print('-----')
->>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
     for idx in keep:
       cleaned += [tuple(group[idx])]
   return np.array(cleaned, dtype=particles.dtype)
@@ -65,22 +53,42 @@ def connected_components(size, pairs):
     comps[p2] = parent
   return set(comps)
 
-<<<<<<< HEAD
-=======
+def dist_filter(particles, origin, dist):
+  origin = np.array(origin)
+  xys = positions(particles)
+  particles = particles[np.where(xys[:,1]<(origin[1]-dist))]
+  xys = positions(particles)
+  particles = particles[np.where(xys[:,0]<(origin[0]-dist))]
+  xys = positions(particles)
+  particles = particles[np.where(xys[:,1]>dist)]
+  xys = positions(particles)
+  particles = particles[np.where(xys[:,0]>dist)]
+  return particles
+  #d = np.sqrt(np.sum((c-origin)**2,axis=1))
+  return particles[np.where(d > dist)]
+
+
+def remove_on_edges(particles, padding):
+  #particles = dist_filter(particles, [0, 0], padding)
+  particles = dist_filter(particles, [3838, 3710], padding)
+  return particles
+
 
 if __name__ == '__main__':
   import sys
   radius = float(sys.argv[1])
-  src = sys.argv[2]
-  dst = sys.argv[3]
+  padding = float(sys.argv[2])
+  src = sys.argv[3]
+  dst = sys.argv[4]
   print('loading...')
-  ps = particles.load(src)
+  ps = load(src)
   print('deduping...')
-  fs = particles.dedup(ps, radius)
+  fs = dedup(ps, radius)
   print('removed: %d duplicates'%(len(ps)-len(fs)))
+  rs = remove_on_edges(fs, padding)
+  print('removed: %d edge particles'%(len(fs)-len(rs)))
   print('saving...')
-  particles.save(fs, dst)
+  save(rs, dst)
 
 
 
->>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
