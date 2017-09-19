@@ -5,9 +5,14 @@ import sys
 import pyfs
 import shutil
 import tempfile
+import subprocess as sp
 import multiprocessing as mp
 
 import unpack
+
+def call(args, stderr=None, stdout=None):
+  return sp.run(map(str, args), stderr=stderr, stdout=stdout)
+
 
 def get_arguments():
 
@@ -40,80 +45,113 @@ def get_arguments():
                         help='number of patches for local refinement')
   parser.add_argument('-u', '--unpack', default=False, action='store_true',
                         help='unpack byte-packed frames')
+  parser.add_argument('-s', '--savestack', default=False, action='store_true',
+                        help='save aligned stack')
+  parser.add_argument('--binby', default=1, type=int,
+                        help='binning by motioncor2')
   return parser.parse_args()
 
 
 
 
-def motioncor2(src, dst, gain=None, expf=None, group=1, bfactor=200, kv=300, apix=1.0, patches=1, gpu=0):
+def motioncor2(src, dst, args, gpu=0):
   cmd  = ['motioncor2']
-  if src.endswith('.mrc'):
+  if src.endswith('.mrc') or src.endswith('.mrcs'):
     cmd += ['-InMrc', src]
   elif src.endswith('.tif'):
     cmd += ['-InTiff', src]
   else:
-    raise ArgumentError('file: %s must be TIFF or MRC'%(src))
+    raise ValueError('file: %s must be TIFF or MRC'%(src))
   cmd += ['-OutMrc', dst]
-  cmd += ['-Bft', bfactor]
-  cmd += ['-Patch', patches, patches]
-  cmd += ['-Kv', kv]
-  cmd += ['-PixSize', apix]
-  cmd += ['-Group', group]
-  if expf is not None:
-    cmd += ['-FmDose', expf]
+  cmd += ['-Bft', args.bfactor]
+  cmd += ['-Patch', args.patches, args.patches]
+  cmd += ['-Kv', args.kv]
+  cmd += ['-PixSize', args.apix]
+  cmd += ['-Group', args.group]
+  cmd += ['-LogFile', pyfs.rext(dst, '')]
+  if hasattr(args, 'mocor2_norm'):
+    cmd += ['-Gain', args.mocor2_norm]
+  if args.binby > 1:
+    cmd += ['-FtBin', args.binby]
+  if args.savestack:
+    cmd += ['-OutStack', 1]
+  if args.expf is not None:
+    cmd += ['-FmDose', args.expf]
   cmd += ['-Gpu', gpu]
-  if gain is not None:
-    cmd += ['-Gain', gain]
-  os.system(' '.join(map(str, cmd))) 
+  print(' '.join(map(str, cmd)))
+  call(cmd)
 
 
 def pbunzip2(src, dst):
   if src.endswith('.bz2'):
-    os.system('pbunzip2 %s -c > %s'%(src, dst))
-    return dst
+    with open(dst, 'wb') as fdst:
+      call(['pbunzip2', src, '-c'], stdout=fdst)
   elif src.endswith('.zst'):
-    os.system('pzstd -d -o %s %s'%(dst, src))
-    return dst
+    call(['zstd', '-d', '-o', dst, src])
   else:
-    return src
+    dst = src
+  return dst
 
 
-def process(path, aligned, args, gpu, should_unpack):
+def process(path, aligned, args, gpu):
   
-  aligned_dw = unpack.label(aligned, 'dw')
-  
+  aligned_dw  = unpack.label(aligned, 'dw')
+  aligned_log = pyfs.rext(aligned, 'shifts')
+  aligned_stk = pyfs.rext(aligned, 'mrcs')
+
   print(path, '->', aligned)
+  print(' '*len(path), '->', aligned_log)
   
   tmpdir = tempfile.mkdtemp()
   tmp_unzipped    = pyfs.join(tmpdir, 'decompressed.mrc')
   tmp_unpacked    = pyfs.join(tmpdir, 'unpacked.mrc')
   tmp_aligned     = pyfs.join(tmpdir, 'aligned.mrc')
   tmp_aligned_dw  = pyfs.join(tmpdir, 'aligned_DW.mrc')
-  
+ 
   tmp_unzipped = pbunzip2(path, tmp_unzipped)
   
-  if should_unpack: 
+  if args.unpack: 
     unpack.unpack(tmp_unzipped, tmp_unpacked, args.defects, args.norm, mode='byte')
-    motioncor2(tmp_unpacked, tmp_aligned, gain=None, bfactor=args.bfactor, group=args.group, expf=args.expf, kv=args.kv, apix=args.apix, patches=args.patches, gpu=gpu)
+    motioncor2(tmp_unpacked, tmp_aligned, args, gpu=gpu)
   else:
-    motioncor2(tmp_unzipped, tmp_aligned, gain=args.norm, expf=args.expf, bfactor=args.bfactor, group=args.group, kv=args.kv, apix=args.apix, patches=args.patches, gpu=gpu)  
+    args.mocor2_norm = args.norm
+    motioncor2(tmp_unzipped, tmp_aligned, args, gpu=gpu)  
+  
+  mv(tmp_aligned, aligned)
+  mv(tmp_aligned_dw, aligned_dw)
+  mvglob(pyfs.join(tmpdir, '*-Full.log'), aligned_log)
+  mvglob(pyfs.join(tmpdir, '*_Stk.mrc'), aligned_stk)
+  shutil.rmtree(tmpdir, False)
 
-  shutil.copy(tmp_aligned, aligned)
-  if pyfs.exists(tmp_aligned_dw):
-    shutil.copy(tmp_aligned_dw, aligned_dw)
-  shutil.rmtree(tmpdir)
+
+def mvglob(pattern, dst):
+  files = tuple(pyfs.glob(pattern))
+  if len(files) > 1:
+    print('[warning] more than one file matches pattern: %s'%(pattern))
+    mv(files[-1], dst)
+  elif len(files) < 1:
+    print('[warning] no files match pattern: %s'%(pattern))
+  elif len(files) == 1:
+    mv(files[0], dst)
+
+
+def mv(src, dst):
+  if pyfs.exists(src):
+    try:  pyfs.mv(src, dst)
+    except: pyfs.cp(src, dst)
 
 
 def label(path, label):
   path = path.replace('.bz2','')
+  path = path.replace('.zst','')
   path = unpack.label(path, label)
   return path
-
 
 def main():
   
   args = get_arguments()
   pool = mp.Pool(args.gpus)
+  results = []  
   
   gpu = 0
   for path in args.mrcs:
@@ -121,11 +159,16 @@ def main():
     if pyfs.exists(dst):
       print(dst, 'exists, skipping', path)
       continue
+    elif path.endswith('%s.mrc'%(args.label)):
+      print(path, 'is not a frame stack, skipping')
+      continue
     #print(path, '->', dst)
     #process(path, dst, args, gpu % args.gpus)
-    pool.apply_async(process, args=(path, dst, args, gpu % args.gpus, args.unpack))
+    results += [pool.apply_async(process, args=(path, dst, args, gpu % args.gpus))]
     gpu += 1
   pool.close()
+  for result in results:
+    print(result.get())
   pool.join()
 
 
