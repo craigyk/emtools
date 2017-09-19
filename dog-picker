@@ -2,7 +2,6 @@
 
 import argparse
 import imaging
-import pystar
 import pyfs
 
 import numpy as np
@@ -18,7 +17,6 @@ def arguments():
     
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--mrc', nargs='+', help='path to MRC input image')
-    group.add_argument('--star', help='path to STAR file with MRC images')
     group.add_argument('--glob', help='glob pattern for MRC images')
     
     parser.add_argument('-p', '--parallel', type=int, default=1,
@@ -187,21 +185,12 @@ _rlnAutopickFigureOfMerit #5
             dst.write('%.6f %.6f %.6f %d %.6f\n' % (keypoint[0][1], keypoint[0][0], psi, cls, keypoint[1]))
 
 
-def load_micrographs_star(path):
-    values = pystar.load(path)[0]['data_']
-    fields = list(values)[0]
-    index = fields.index('rlnMicrographName')
-    return [x[index] for x in list(values.values())[0]]
-
-
 def get_micrographs(args):
     if args.mrc:
         return args.mrc
     elif args.glob:
         import glob
         return glob.glob(args.glob)
-    elif args.star:
-        return load_micrographs_star(args.star)
     raise ValueError()
 
 
@@ -222,8 +211,6 @@ if __name__ == '__main__':
 
     def process(mic):
         try:
-            if args.star:
-                mic = pyfs.join(pyfs.dpath(args.star), mic)
             image = imaging.load(mic)[0]
             star = pyfs.rext(mic, full=False) + '_%s.star' % (args.label)
             if not args.force and pyfs.exists(star):
