@@ -1,10 +1,9 @@
 #!/usr/bin/env cky-python
 
 import os
-<<<<<<< HEAD
 import sys
 import multiprocessing as mp
-
+import unpack
 
 def get_arguments():
     import argparse
@@ -61,9 +60,9 @@ def main():
   pool = mp.Pool(procs)
   for mrc in args.mrcs:
     pool.apply_async(unpack, args=(mrc, args.label, args.defects, args.norm), callback=progress)
-=======
+
+
 import unpack
-import multiprocessing as mp
 
 def main():
   
@@ -77,7 +76,6 @@ def main():
       continue
     #unpack.unpack(mrc, dst, args.defects, args.norm, args.mode)
     pool.apply_async(unpack.unpack, args=(mrc, dst, args.defects, args.norm, args.mode))
->>>>>>> 498c0a075196c556752da81fa0913456d52b35ab
   pool.close()
   pool.join()
 

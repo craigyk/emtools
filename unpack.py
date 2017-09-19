@@ -4,14 +4,15 @@ import os
 import pyfs
 
 MODES = { 
-  'byte'  : 0,
+  'byte'  : 'ubyte',
   'float' : 2
 }
 
 MODE_SCALING = {
-  'byte'  : 15, # added headroom, 15 instead of 16 to prevent integer overflow after gain norm
+  'byte'  : 16, # added headroom, 15 instead of 16 to prevent integer overflow after gain norm
   'float' :  1,
 }
+
 
 def get_arguments():
   
@@ -83,17 +84,18 @@ def label(path, label):
 
 def main():
   
+  import pyfs 
   import multiprocessing as mp
 
-  args = unpack.get_arguments()
+  args = get_arguments()
   procs = int(os.environ.get('SLURM_JOB_CPUS_PER_NODE', default='1'))
 
   pool = mp.Pool(procs)
   for mrc in args.mrcs:
-    dst = unpack.label(mrc, args.label)
-    if unpack.pyfs.exists(dst):
+    dst = label(mrc, args.label)
+    if pyfs.exists(dst):
       continue
-    pool.apply_async(unpack.unpack, args=(mrc, dst, args.defects, args.norm, args.mode))
+    pool.apply_async(unpack, args=(mrc, dst, args.defects, args.norm, args.mode))
   pool.close()
   pool.join()
 
