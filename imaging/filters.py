@@ -201,8 +201,8 @@ def resize(image, nrows, ncols):
 
 
 def zoom(image, factor):
-    rows = int(np.round(float(image.shape[-2]) * factor))
-    cols = int(np.round(float(image.shape[-1]) * factor))
+    rows = int(np.round(float(image.shape[-1]) * factor))
+    cols = int(np.round(float(image.shape[-2]) * factor))
     return resize(image, rows, cols)
 
 
