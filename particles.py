@@ -1,18 +1,18 @@
 #!/usr/bin/env cky-python
 
 import particles
-import pystar2
+import pystar
 import numpy as np
 from scipy.spatial import cKDTree as KDTree
 from collections import defaultdict as ddict
 
 def load(path):
-  return list(pystar2.load(path)[''].values())[0]
+  return list(pystar.load(path)[''].values())[0]
 
 
 def save(particles, path):
   keys = particles.dtype.names
-  pystar2.save( { '': { keys: particles } }, path)
+  pystar.save( { '': { keys: particles } }, path)
 
 
 def positions(particles):
