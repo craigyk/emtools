@@ -1,0 +1,73 @@
+#!/usr/bin/env python
+
+import mesa
+
+def zipf(funcs,items):
+	applied = []
+	try:
+		for func, item in zip(funcs,items):
+			applied += [func(item)]
+	except:
+		raise RuntimeError("could not apply %s to %s"%(func.__name__,item))
+	return applied
+
+def surf(image,threshold=1.0,octaves=10,layers=3):
+	keys = []
+	scale = 1
+	for octave in xrange(octaves):
+		_keys = _surf(image,threshold,1,layers)
+		keys += scale_keys(_keys,scale)
+		keys  = [[c,s*0.5,x] for c,s,x in keys]
+		image = resize(image,image.rows/2,image.cols/2)
+		threshold = threshold * 0.25
+		scale = scale * 2
+	return keys
+
+def _surf(image,threshold=1.0,octaves=10,layers=4):
+	threshold = threshold * 3000.0
+	detector = cv2.SURF(threshold,octaves,layers,False,False)
+	keypoints = keypointsAsArray(detector.detect(np.array(image)))
+	return keypoints
+
+def mser(image,delta=1,sigma=10.0):
+	detector = cv2.MSER(int(delta),_min_area=200,_max_variation=100)
+	areas = detector.detect(np.array(image))
+	keypoints = []
+	for area in areas:
+		cx = np.mean(area[:,0])
+		cy = np.mean(area[:,1])
+		dists = np.sqrt(np.sum((area-[cx,cy])**2,axis=1))
+		size = np.max(dists)
+		keypoints += [[[cx,cy], size, 1.0]]
+	return keypoints
+
+def sift(image,threshold=1.0,octaves=10):
+	threshold = threshold * 0.01
+	detector = cv2.SIFT(contrastThreshold=threshold,edgeThreshold=0.01,sigma=1.6)
+	detector.setInt("nOctaveLayers",3)
+	keypoints = detector.detect(image)
+	keypoints = keypointsAsArray(keypoints,[-1])
+	return keypoints
+
+def window(image,keypoints,extra=2.0,size=128):
+	scaled_images = {}
+	bins = pyr_group(keypoints)
+	for bin in sorted(bins):
+		for keypoint in bins[bin]:
+			size_bin = int(math.log(keypoint.size*extra,2))+1
+			bin_max_size = 2**size_bin
+			scale_factor = float(size) / bin_max_size
+			if scale_factor < 1.0:
+				if size_bin not in scaled_images:
+					scaled_images[size_bin] = filters.zoom(image,scale_factor)
+				row = float(keypoint.pt[1]) * scale_factor
+				col = float(keypoint.pt[0]) * scale_factor
+				scaled = scaled_images[size_bin]
+				particle = filters.window(scaled,(row,col),size)
+			else:
+				row = keypoint.pt[1]
+				col = keypoint.pt[0]
+				particle = filters.window(image,(row,col),bin_max_size)
+				particle = filters.resize(particle,size,size)
+			yield bin, particle
+
