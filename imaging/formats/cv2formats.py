@@ -4,7 +4,7 @@ import cv2
 
 from imaging import filters
 
-NAMES = ["png", "jpg", "tiff"]
+NAMES = ["png", "jpg", "tiff", "tif"]
 
 
 def load(path):

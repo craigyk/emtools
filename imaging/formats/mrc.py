@@ -89,6 +89,19 @@ def header_from_array(array):
     return header
 
 
+def header_from_dims(dims):
+    header = np.zeros([1], dtype=MRCHeader)
+    dtype = np.dtype('f4')
+    header[0]['mode'] = {MRCModes[k]: k for k in MRCModes}[dtype]
+    shape = list(dims)
+    header[0]['dims'][:] = shape[::-1]
+    header[0]['intervals'][:] = header[0]['dims']
+    header[0]['lengths'][:] = header[0]['dims']
+    header[0]['angles'] = 90.0
+    header[0]['mapping'] = [ 2, 1 ,0 ]
+    return header
+
+
 def save(image, path):
     image = np.array(image)
     with open(path, 'wb') as dst:

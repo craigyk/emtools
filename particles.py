@@ -53,42 +53,58 @@ def connected_components(size, pairs):
     comps[p2] = parent
   return set(comps)
 
-def dist_filter(particles, origin, dist):
-  origin = np.array(origin)
+def dist_filter(particles, dims, dist):
+  dims = np.array(dims)
   xys = positions(particles)
-  particles = particles[np.where(xys[:,1]<(origin[1]-dist))]
+  particles = particles[np.where(xys[:,0]>(dims[0]+dist))]
   xys = positions(particles)
-  particles = particles[np.where(xys[:,0]<(origin[0]-dist))]
+  particles = particles[np.where(xys[:,1]>(dims[1]+dist))]
   xys = positions(particles)
-  particles = particles[np.where(xys[:,1]>dist)]
+  particles = particles[np.where(xys[:,0]<(dims[2]-dist))]
   xys = positions(particles)
-  particles = particles[np.where(xys[:,0]>dist)]
+  particles = particles[np.where(xys[:,1]<(dims[3]-dist))]
   return particles
-  #d = np.sqrt(np.sum((c-origin)**2,axis=1))
-  return particles[np.where(d > dist)]
 
 
 def remove_on_edges(particles, padding):
-  #particles = dist_filter(particles, [0, 0], padding)
-  particles = dist_filter(particles, [3838, 3710], padding)
+  particles = dist_filter(particles, [0, 0] + padding[1:3], padding[0])
   return particles
 
 
 if __name__ == '__main__':
-  import sys
-  radius = float(sys.argv[1])
-  padding = float(sys.argv[2])
-  src = sys.argv[3]
-  dst = sys.argv[4]
+  
+  import argparse
+  
+  parser = argparse.ArgumentParser(
+        description='clean up a STAR file of duplicate and/or border particles')
+
+  parser.add_argument('-d', '--dedup', type=float, default=False,
+                        help='radius (pixels) for determining wether particles are duplicates')
+  parser.add_argument('-e', '--edge', default=False, type=int, nargs=3,
+                        help='remove particles near edges, supply the edge radius and image dimensions (pixels) ie. 50 3760 3878')
+  parser.add_argument('-i', '--src', required=True,
+                        help='input STAR file')
+  parser.add_argument('-o', '--dst', required=True,
+                        help='outpout STAR file')
+
+
+  args = parser.parse_args()
+
+
   print('loading...')
-  ps = load(src)
-  print('deduping...')
-  fs = dedup(ps, radius)
-  print('removed: %d duplicates'%(len(ps)-len(fs)))
-  rs = remove_on_edges(fs, padding)
-  print('removed: %d edge particles'%(len(fs)-len(rs)))
+  ps = load(args.src)
+  print('loaded: %d particles'%(len(ps)))
+  if args.dedup is not False:
+    print('deduping...')
+    fs = dedup(ps, args.dedup)
+    print('removed: %d duplicates'%(len(ps)-len(fs)))
+    ps = fs
+  if args.edge is not False:
+    fs = remove_on_edges(ps, args.edge)
+    print('removed: %d edge particles'%(len(ps)-len(fs)))
+    ps = fs
   print('saving...')
-  save(rs, dst)
+  save(ps, args.dst)
 
 
 

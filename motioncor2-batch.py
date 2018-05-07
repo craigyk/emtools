@@ -69,6 +69,7 @@ def motioncor2(src, dst, args, gpu=0):
   cmd += ['-PixSize', args.apix]
   cmd += ['-Group', args.group]
   cmd += ['-LogFile', pyfs.rext(dst, '')]
+  cmd += ['-InFmMotion']
   if hasattr(args, 'mocor2_norm'):
     cmd += ['-Gain', args.mocor2_norm]
   if args.binby > 1:
